@@ -1,0 +1,86 @@
+name: Unpack parts
+
+# part1.txt, part2.txt, part3.txt upload karte hi ye khud chalta hai.
+# Parts na milen to ye error nahi deta, bas "skipped" notice dikhata hai.
+# Manual: Actions -> Unpack parts -> Run workflow.
+
+on:
+  push:
+    paths:
+      - "**/part1.txt"
+      - "**/part2.txt"
+      - "**/part3.txt"
+  workflow_dispatch:
+    inputs:
+      delete_parts:
+        description: "Unpack ke baad part*.txt delete karein?"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unpack
+  cancel-in-progress: false
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find parts
+        id: find
+        run: |
+          find_one() { find . -path ./.git -prune -o -type f -name "$1" -size +0 -print | head -n1; }
+          P1=$(find_one part1.txt); P2=$(find_one part2.txt); P3=$(find_one part3.txt)
+          if [ -z "$P1" ] || [ -z "$P2" ] || [ -z "$P3" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::part1.txt, part2.txt, part3.txt teeno nahi mile (shayad pehle hi unpack ho chuke hain). Kuch karne ki zarurat nahi."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            { echo "P1=$P1"; echo "P2=$P2"; echo "P3=$P3"; } >> "$GITHUB_ENV"
+            echo "Parts mile: $P1 $P2 $P3"
+          fi
+
+      - name: Join and decode parts
+        if: steps.find.outputs.ready == 'true'
+        run: |
+          cat "$P1" "$P2" "$P3" | tr -d '\n\r \t' | base64 -d > "$RUNNER_TEMP/project.tar.gz" \
+            || { echo "::error::Parts galat ya adhoore hain. Teeno parts dobara bina badle upload karein."; exit 1; }
+          tar -tzf "$RUNNER_TEMP/project.tar.gz" > "$RUNNER_TEMP/list.txt" \
+            || { echo "::error::Parts se valid archive nahi bana. Teeno parts dobara upload karein."; exit 1; }
+          echo "Files in archive: $(wc -l < "$RUNNER_TEMP/list.txt")"
+
+      - name: Safety check
+        if: steps.find.outputs.ready == 'true'
+        run: |
+          if grep -E '(^/|(^|/)\.\.(/|$))' "$RUNNER_TEMP/list.txt"; then
+            echo "::error::Archive me unsafe path mila."; exit 1
+          fi
+
+      - name: Extract all files and folders
+        if: steps.find.outputs.ready == 'true'
+        run: |
+          tar -xzf "$RUNNER_TEMP/project.tar.gz" -C . --no-same-owner --exclude='./.github' --exclude='.github'
+          ls -A
+
+      - name: Remove part files
+        if: steps.find.outputs.ready == 'true' && (github.event_name == 'push' || inputs.delete_parts)
+        run: rm -f "$P1" "$P2" "$P3"
+
+      - name: Commit and push
+        if: steps.find.outputs.ready == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Koi change nahi."
+          else
+            git commit -m "Unpack project from parts"
+            git push
+          fi
+          
