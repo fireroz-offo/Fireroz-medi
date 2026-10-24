@@ -1,0 +1,136 @@
+name: Fireroz Care build
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "build = test APK (+ signed AAB agar secrets hain) | make-keystore = signing key banao (sirf ek baar)"
+        type: choice
+        default: build
+        options:
+          - build
+          - make-keystore
+
+permissions:
+  contents: read
+
+jobs:
+  make-keystore:
+    if: ${{ inputs.task == 'make-keystore' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Create upload keystore
+        run: |
+          mkdir -p out
+          PASS=$(openssl rand -hex 12)
+          ALIAS=fireroz
+          keytool -genkeypair -v -keystore out/upload.jks -storetype PKCS12 \
+            -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=Fireroz Care, O=Fireroz, C=IN" > /dev/null
+          {
+            echo "KEYSTORE_BASE64=$(base64 -w0 out/upload.jks)"
+            echo "KEYSTORE_PASSWORD=$PASS"
+            echo "KEY_ALIAS=$ALIAS"
+            echo "KEY_PASSWORD=$PASS"
+          } > out/keystore-secrets.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: keystore-PRIVATE
+          path: out/
+          retention-days: 3
+
+  build:
+    if: ${{ inputs.task == 'build' }}
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+
+      - name: Feedback URL (optional secret)
+        env:
+          FEEDBACK_URL: ${{ secrets.FEEDBACK_URL }}
+        run: |
+          if [ -n "$FEEDBACK_URL" ]; then
+            printf 'export const FEEDBACK_URL = "%s";\n' "$FEEDBACK_URL" > src/config.js
+            echo "Feedback feature ON"
+          else
+            echo "Feedback feature OFF (secret FEEDBACK_URL khali)"
+          fi
+
+      - name: Build web app
+        run: npm run build:release
+
+      - name: Add Android project
+        run: npx cap add android
+
+      - name: Prepare signing keystore (if secrets present)
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KS_ALIAS" ] && [ -n "$KS_KEYPASS" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            {
+              echo "KEYSTORE_PATH=$RUNNER_TEMP/upload.jks"
+              echo "KEYSTORE_PASSWORD=$KS_PASS"
+              echo "KEY_ALIAS=$KS_ALIAS"
+              echo "KEY_PASSWORD=$KS_KEYPASS"
+              echo "HAS_KEYSTORE=true"
+            } >> "$GITHUB_ENV"
+            echo "Signing: ON"
+          else
+            echo "HAS_KEYSTORE=false" >> "$GITHUB_ENV"
+            echo "Signing: OFF (sirf test APK banega)"
+          fi
+
+      - name: Configure Android (icons, tones, permissions, signing)
+        run: npm run android:prepare
+
+      - name: Sync web assets
+        run: npx cap sync android
+
+      - name: Build test APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+
+      - name: Build signed AAB for Play Store
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        working-directory: android
+        run: ./gradlew bundleRelease --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        with:
+          name: play-store-aab
+          path: android/app/build/outputs/bundle/release/*.aab
