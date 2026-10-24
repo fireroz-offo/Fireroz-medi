@@ -63,7 +63,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses (SDK runner me pehle se hai)
+        run: |
+          SDKM="$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -n1)"
+          if [ -n "$SDKM" ]; then yes | "$SDKM" --licenses > /dev/null 2>&1 || true; fi
+          echo "ANDROID_HOME=$ANDROID_HOME"
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
@@ -134,3 +138,4 @@ jobs:
         with:
           name: play-store-aab
           path: android/app/build/outputs/bundle/release/*.aab
+          
