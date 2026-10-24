@@ -1,0 +1,17 @@
+{
+  "appId": "com.fireroz.care",
+  "appName": "Fireroz Care",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "adjustMarginsForEdgeToEdge": "auto"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_fireroz",
+      "iconColor": "#0A6FE0"
+    }
+  }
+}

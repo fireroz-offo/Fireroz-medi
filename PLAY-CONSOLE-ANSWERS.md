@@ -1,0 +1,13 @@
+# Play Console cheat-sheet (verify each question against the live form)
+- Account: Personal ($25 one-time). Closed test needed: 12+ testers, opted in 14 continuous days, then "Apply for production".
+- Privacy policy URL: host `public/privacy.html` on free HTTPS (GitHub Pages / Cloudflare Pages / Firebase Hosting free). Must be a web page, not PDF.
+- Data safety (UPDATED): health records stay on device. The optional in-app suggestion form sends typed text to your Google Apps Script → answer YES, data collected: "Other user-generated content" (optional; purpose: app functionality/developer communications; encrypted in transit; not shared; users can request deletion by email). Everything else: not collected. Re-check against the live form; if FEEDBACK_URL is left empty, the feature is off and you can answer 'no data collected'.
+- Account creation: none → account-deletion URL not required (answer "app doesn't allow account creation").
+- Health apps declaration: complete honestly: medication reminders / personal record keeping; not a medical device; no diagnosis/treatment; no telemedicine.
+- Target audience: 18+. Content rating: fill questionnaire honestly (no violence etc.).
+- Permissions: Notifications (reminders), Camera (QR/photos). Do NOT add exact-alarm, SMS, location, contacts.
+- Listing: no "diagnose, treat, cure, doctor consultation, guaranteed alarm" claims. Say "record and reminder tool".
+- Ratings: app uses Google's In-App Review API only (≥5 launches, ≥7 days, max 2 times, 60+ days apart). Never offer rewards for ratings, never ask "do you like the app?" first, never lock features. Dialog appears only for Play-installed builds and Google may limit how often it shows.
+- "About" screen: future features are labelled "not available yet". Keep it true; don't add medical/telemedicine promises.
+- Target API: Play needs Android 16 (API 36) for new apps/updates (from 31 Aug 2026). Capacitor 8 targets 36; check the built AAB in Play Console shows no target-API error.
+- Exit prompt: shown only on Back-to-exit, max once/7 days, skippable, never blocks leaving; no rewards for feedback.
